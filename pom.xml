@@ -118,6 +118,30 @@
                 </configuration>
             </plugin>
              
+             <!-- put all libs in jar -->
+             <plugin>
+		        <artifactId>maven-assembly-plugin</artifactId>
+		        <configuration>
+		          <descriptorRefs>
+		            <descriptorRef>jar-with-dependencies</descriptorRef>
+		          </descriptorRefs>
+		          <archive>
+		            <manifest>
+		              <mainClass></mainClass>
+		            </manifest>
+		          </archive>
+		        </configuration>
+		        <executions>
+		          <execution>
+		            <id>make-assembly</id>
+		            <phase>package</phase>
+		            <goals>
+		              <goal>single</goal>
+		            </goals>
+		          </execution>
+		        </executions>
+		      </plugin>
+             
             <!-- When run tests in the test phase, include .java and .scala source files -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -162,6 +186,13 @@
 		    <artifactId>spark-mllib_2.10</artifactId>
 		    <version>1.6.1</version>
 		</dependency>
+		
+		<!-- MOA dependency -->
+		<dependency>
+	  		<groupId>nz.ac.waikato.cms.moa</groupId> 
+	  		<artifactId>moa</artifactId>  
+	  		<version>2014.11</version> 
+	  	</dependency>
 
     </dependencies>
 </project>
