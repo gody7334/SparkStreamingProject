@@ -117,10 +117,12 @@
                     </sourceIncludes>
                 </configuration>
             </plugin>
-             
-             <!-- put all libs in jar -->
+                  
+       
+             <!-- maven-assembly-plugin
              <plugin>
 		        <artifactId>maven-assembly-plugin</artifactId>
+		        <version>2.6</version>
 		        <configuration>
 		          <descriptorRefs>
 		            <descriptorRef>jar-with-dependencies</descriptorRef>
@@ -140,7 +142,8 @@
 		            </goals>
 		          </execution>
 		        </executions>
-		      </plugin>
+		      </plugin>-->
+		      
              
             <!-- When run tests in the test phase, include .java and .scala source files -->
             <plugin>
@@ -155,6 +158,13 @@
                 </configuration>
             </plugin>
         </plugins>
+        
+        <!-- put nessary lib in jar 
+        <resources>
+	      <resource>
+	        <directory>lib/</directory>
+	      </resource>
+	    </resources>-->
     </build>
  
  
@@ -177,6 +187,13 @@
 	    <dependency>
 		    <groupId>org.apache.spark</groupId>
 		    <artifactId>spark-streaming_2.10</artifactId>
+		    <version>1.6.1</version>
+		</dependency>
+		
+		<!-- Spark sql dependency -->
+		<dependency>
+		    <groupId>org.apache.spark</groupId>
+		    <artifactId>spark-sql_2.10</artifactId>
 		    <version>1.6.1</version>
 		</dependency>
 		
