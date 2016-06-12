@@ -13,28 +13,8 @@ object DstreamRDD {
 
   def main(args: Array[String]): Unit = {
     
-    var listModel = List[LearningModel]()
-    var listNum = List[LearningModel]()
-    for( x <- 1 to 10){
-      val model = new HoeffdingTree();
-      var l = new LearningModel(model, x)
-      var m = new LearningModel(model, x)
-      listModel = l::listModel
-      listNum = m::listNum
-    }
     
     val sc = new SparkContext(new SparkConf().setAppName("Spark Count"))
-    
-    val modelrdd = sc.parallelize(listModel)
-    val numrdd = sc.parallelize(listNum)
-    
-    modelrdd.map(x=>new LearningModel(x.learner,x.learner_num + 1))
-    
-    var num_model = numrdd.zip(modelrdd)
-    System.out.println(num_model.collect.mkString(", "))
-    
-    System.out.println(num_model.map(x=>x._1).collect.mkString(", "))
-
     @transient val defaults = List("magic" -> 2, "face" -> 5, "dust" -> 7 )
     val defaultRdd = sc.parallelize(defaults)
     
@@ -49,13 +29,11 @@ object DstreamRDD {
     }
     val runningTotal = historicCount.transform{ rdd => rdd.union(defaultRdd)}.reduceByKey( _+_ )
     
-    modelrdd.count()
-    modelrdd.collect()
-    System.out.println(modelrdd.collect().mkString(", "))
-//    defaultRdd.collect()
+
+    defaultRdd.collect()
     wordCount.print()
     historicCount.print()
     runningTotal.print()
-//    ssc.start()
+    ssc.start()
 }
 }

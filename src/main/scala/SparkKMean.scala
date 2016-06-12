@@ -16,11 +16,15 @@
  */
 
 // scalastyle:off println
-package org.apache.spark.examples
+package org.apache.spark.examples.sql
 
 import breeze.linalg.{squaredDistance, DenseVector, Vector}
 
-import org.apache.spark.sql.SparkSession
+import org.apache.spark.SparkContext
+import org.apache.spark.SparkContext._
+import org.apache.spark.SparkConf
+
+//import org.apache.spark.sql.SparkSession
 
 /**
  * K-means clustering.
@@ -66,26 +70,34 @@ object SparkKMean {
 
     showWarning()
 
-    val spark = SparkSession
-      .builder
-      .appName("SparkKMeans")
-      .getOrCreate()
-
-    val lines = spark.read.text(args(0)).rdd
-    val data = lines.map(parseVector _).cache()
+//    val spark = SparkSession
+//      .builder
+//      .appName("SparkKMeans")
+//      .getOrCreate()
+//
+//    val lines = spark.read.text(args(0)).rdd
+    
+    val sc = new SparkContext(new SparkConf().setAppName("Spark Count"))
+    val threshold = args(1).toInt
+    val dataset = sc.textFile(args(0)).flatMap(_.split(" "))
+    
+    val data = dataset.map(parseVector _).cache()
+    
     val K = args(1).toInt
     val convergeDist = args(2).toDouble
 
+    //random select the cluster center 
+    //kPoints is the center 
     val kPoints = data.takeSample(withReplacement = false, K, 42)
     var tempDist = 1.0
 
     while(tempDist > convergeDist) {
+      
       val closest = data.map (p => (closestPoint(p, kPoints), (p, 1)))
 
       val pointStats = closest.reduceByKey{case ((p1, c1), (p2, c2)) => (p1 + p2, c1 + c2)}
 
-      val newPoints = pointStats.map {pair =>
-        (pair._1, pair._2._1 * (1.0 / pair._2._2))}.collectAsMap()
+      val newPoints = pointStats.map {pair => (pair._1, pair._2._1 * (1.0 / pair._2._2))}.collectAsMap()
 
       tempDist = 0.0
       for (i <- 0 until K) {
@@ -100,7 +112,7 @@ object SparkKMean {
 
     println("Final centers:")
     kPoints.foreach(println)
-    spark.stop()
+
   }
 }
 // scalastyle:on println
