@@ -173,7 +173,7 @@
         <dependency>
             <groupId>org.scala-lang</groupId>
             <artifactId>scala-library</artifactId>
-            <version>2.10.0</version>
+            <version>2.10.3</version>
         </dependency>
         
         <!-- Spark dependency -->
@@ -210,6 +210,13 @@
 	  		<artifactId>moa</artifactId>  
 	  		<version>2014.11</version> 
 	  	</dependency>
+	  	
+	  	<!-- Spark streaming Kafka dependency -->
+		<dependency>
+		    <groupId>org.apache.spark</groupId>
+		    <artifactId>spark-streaming-kafka_2.10</artifactId>
+		    <version>1.6.1</version>
+		</dependency>
 
     </dependencies>
 </project>
