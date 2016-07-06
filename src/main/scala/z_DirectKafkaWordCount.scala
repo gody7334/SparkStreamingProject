@@ -24,6 +24,8 @@ import org.apache.spark.streaming._
 import org.apache.spark.streaming.kafka._
 import org.apache.spark.SparkConf
 import main.java.Entity.LearningModel
+import main.scala.Utils.StreamingKNORA
+import main.scala.Utils.StreamingModel
 
 /**
  * Consumes messages from one or more topics in Kafka and does wordcount.
@@ -66,7 +68,7 @@ object DirectKafkaWordCount {
 
     var streamingKNORA = new StreamingKNORA()
     streamingKNORA.setNumModel(100)
-    streamingKNORA.setModelType(StreamingKNORA.HoeffdingTree)
+    streamingKNORA.setModelType(StreamingModel.HoeffdingTree)
     streamingKNORA.setNumValidate(1000)
     streamingKNORA.setNumNeighbour(8);
     streamingKNORA.setIfIntersect(true);
@@ -90,6 +92,7 @@ object DirectKafkaWordCount {
 import org.apache.log4j.{Level, Logger}
 
 import org.apache.spark.Logging
+import Utils.StreamingKNORA
 
 /** Utility functions for Spark Streaming examples. */
 object StreamingExamples extends Logging {

@@ -1,19 +1,14 @@
 package main.java.Utils;
 
-import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-import javax.sql.RowSet;
-import javax.sql.rowset.Predicate;
-
 import main.java.Entity.ValidateInstance;
-
-import weka.core.Attribute;
 import weka.core.Instance;
+import weka.core.InstanceComparator;
 import weka.core.Instances;
 import weka.core.neighboursearch.LinearNNSearch;
 
@@ -68,19 +63,23 @@ public class KNORA implements java.io.Serializable{
 		}
 		
 		List<ValidateInstance> list_knn_v_instances = new ArrayList<ValidateInstance>();
-		
+	
 		for(Instance i : insts){
 			for(ValidateInstance v : list_validate_instances){
 				boolean b = true;
 				for(int t = 0; t < i.numAttributes(); t++){
-					if(i.value(t) != v.Validate_Inst.value(t))
+					if(i.value(t) != v.Validate_Inst.value(t)){
 						b = false;
+						break;
+					}
 				}
 				if(b == true)
 					list_knn_v_instances.add(v);
 				b = true;
 			}
 		}
+		
+//		System.out.println(list_knn_v_instances.size());
 
 		Set<Integer> result = new HashSet<Integer>((list_knn_v_instances.get(0).list_positive_learner_num));
 		Set<Integer> s1;
