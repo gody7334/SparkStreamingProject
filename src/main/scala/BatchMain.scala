@@ -28,6 +28,7 @@ object BatchMain {
     
     //Set Spark context variable
     val sc = new SparkContext(new SparkConf().setAppName("Spark KNORA"))
+    StreamingKNORA.setSparkContext(sc)
     sc.setLocalProperty("spark.shuffle.compress", "true")
     sc.setLocalProperty("spark.shuffle.spill.compress", "true")
     sc.setLocalProperty("spark.eventLog.compress", "true")
@@ -48,10 +49,10 @@ object BatchMain {
      var numOfData = SD.count()
      var RDDIndex = 0
      val TrainN = 700000
-     val ValidateN = 200000
-     val TestN = 100000-1
+     val ValidateN = 100000
+     val TestN = 100000
      //TODO: Under Streaming, Need to merge unused data into new data
-     breakable { while(RDDIndex < numOfData-1){
+     breakable { while(RDDIndex < numOfData){
          if(RDDIndex+TrainN > numOfData-1)
            break;
          var train:RDD[String] = null

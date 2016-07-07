@@ -31,13 +31,6 @@ public class KNORA implements java.io.Serializable{
 		
 		//create Instances
 		
-//		ArrayList<Attribute> list_attribute = new ArrayList<Attribute>();
-//		Enumeration<Attribute> a = testInstance.enumerateAttributes();
-//		while(a.hasMoreElements()){
-//			list_attribute.add(a.nextElement());
-//		}
-//		list_attribute.add( testInstance.classAttribute());
-//		Instances val_inst = new Instances( "Val",list_attribute,list_validate_instances.length);
 		Instances val_inst = instances;
 		instances.clear();
 		for(ValidateInstance vi : list_validate_instances){
@@ -47,13 +40,6 @@ public class KNORA implements java.io.Serializable{
 		//KNN search
 		LinearNNSearch lnns = new LinearNNSearch(val_inst);		
 		Instances insts = null;
-		
-//		System.out.println("test instance 1 value: " + testInstance.value(1));
-//		System.out.println("number of instances in validateion instances: " + val_inst.numInstances());
-//		for(int i = 0; i < val_inst.numInstances(); i++){
-//			if(val_inst.instance(i) == null)
-//				System.out.println("val instance " + i +" is null ");
-//		}
 		
 		try {
 			insts = lnns.kNearestNeighbours(testInstance, N_neighbour);
