@@ -83,8 +83,8 @@ class StreamingKNORA extends MachineLearning with Serializable{
   } 
   
   def onPredict(data: RDD[String]) = {
-//    PredictOnInstances_MV(data)
-    PredictOnInstances_KNORA(data)
+    PredictOnInstances_MV(data)
+//    PredictOnInstances_KNORA(data)
   }
   
   def onPredict(data: DStream[String]) = {
@@ -249,17 +249,21 @@ class StreamingKNORA extends MachineLearning with Serializable{
   
   def PredictOnInstances_MV(data: RDD[String]) = {
     //covert sting into instance
-    var insts:RDD[(Long, Instance)] = null
-    new Timers("onPredict_MV: convertoinstance, ").time{
-    insts = data.map(line => convertoinstance(line))
-    }
-    var num_insts = insts.count()
+//    var insts:RDD[(Long, Instance)] = null
+//    new Timers("onPredict_MV: convertoinstance, ").time{
+//    insts = data.map(line => convertoinstance(line))
+//    insts.count()
+//    }
+    
+    var num_insts = data.count()
     
     //for each instance, predict on every model and do majority vote
     var result:RDD[Vector] = null
     new Timers("onPredict_MV: OnInstances_MV_Transformation, ").time{
-    var result = insts.map(inst => PredictOnInstances_MV_Transformation(inst, models))
+    result = data.map(line => PredictOnInstances_MV_Transformation(line))
+    result.count()
     }
+    println("num of result: "+result.count())
     
     //MLlib statistic function
     var mean:Vector = null
@@ -273,22 +277,37 @@ class StreamingKNORA extends MachineLearning with Serializable{
     this.num_testCorrectInst += (mean.apply(0)*num_insts).toInt
     println(num_testCorrectInst.toDouble / num_testInstance.toDouble)    
     System.out.println("Predict MV Learning Model Done!!!")
-    
-    
   }
-  def PredictOnInstances_MV_Transformation(inst: (Long,Instance), models: Array[LearningModel]): Vector = {
+  def PredictOnInstances_MV_Transformation(line:String): Vector = {
+    
+//    //Get predict class (getVotesForInstance)
+//    var PredictResultArray = new Array[PredictResult](models.length)
+//    for(i <- 0 until models.length){
+//      var result = models.apply(i).learner.getVotesForInstance(inst._2)
+//      var predict_result = new PredictResult(models.apply(i).learner_num, result);
+//      PredictResultArray.update(i, predict_result)
+//    }
+    var common = line.indexOf(',')
+    var serialNum = line.substring(0, common).toLong
+    var instString = line.substring(common+1)
+	  var inst = instanceMaker.convertToInstance(instString, instances)
+//	  println(instString)
     
     //Get predict class (getVotesForInstance)
-    var PredictResultArray = new Array[PredictResult](models.length)
-    for(i <- 0 until models.length){
-      var result = models.apply(i).learner.getVotesForInstance(inst._2)
-      var predict_result = new PredictResult(models.apply(i).learner_num, result);
+    var num_model = StreamingKNORA.broadcastModels.value.length
+    var PredictResultArray = new Array[PredictResult](num_model)
+    for(i <- 0 until num_model){
+      var ML = StreamingKNORA.broadcastModels.value.apply(i)
+      var result = ML.learner.getVotesForInstance(inst)
+      var predict_result = new PredictResult(ML.learner_num, result);
       PredictResultArray.update(i, predict_result)
     }
+//    println(num_model)
     
     //Majority vote
     var predictClassIdx = MajorityVote.Vote(PredictResultArray, instances.numClasses())
-    var trueClassIdx = inst._2.classValue().toInt
+    var trueClassIdx = inst.classValue().toInt
+//    println(trueClassIdx)
     if(predictClassIdx == trueClassIdx){
 			 return Vectors.dense(1.0)
 		}
@@ -331,8 +350,7 @@ class StreamingKNORA extends MachineLearning with Serializable{
     var instString = line.substring(common+1)
 	  var inst = instanceMaker.convertToInstance(instString, instances)
     
-    //Get predict class (getVotesForInstance)
-	  
+    //Get predict class (getVotesForInstance)	
     var num_model = StreamingKNORA.broadcastModels.value.length
     var PredictResultArray = new Array[PredictResult](num_model)
 //    new Timers("PredictResultArray, ").time{
