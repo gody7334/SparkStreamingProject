@@ -173,7 +173,7 @@
         <dependency>
             <groupId>org.scala-lang</groupId>
             <artifactId>scala-library</artifactId>
-            <version>2.10.3</version>
+            <version>2.10.4</version>
         </dependency>
         
         <!-- Spark dependency -->
@@ -216,6 +216,13 @@
 		    <groupId>org.apache.spark</groupId>
 		    <artifactId>spark-streaming-kafka_2.10</artifactId>
 		    <version>1.6.1</version>
+		</dependency>
+		
+		<!-- SizeEstimator dependency -->
+		<dependency>
+			<groupId>com.madhukaraphatak</groupId>
+			<artifactId>java-sizeof_2.10</artifactId>
+			<version>0.1</version>
 		</dependency>
 
     </dependencies>

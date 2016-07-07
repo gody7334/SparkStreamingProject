@@ -16,6 +16,8 @@ import main.scala.Utils.Constant
 import org.apache.spark.mllib.tree.DecisionTree
 import org.apache.spark.mllib.tree.model.DecisionTreeModel
 import org.apache.spark.mllib.util.MLUtils
+import org.apache.spark.rdd.RDD
+import org.apache.spark.mllib.regression.LabeledPoint
 
 object BatchMLlibMain {
    def main(args: Array[String]): Unit = {
@@ -30,13 +32,30 @@ object BatchMLlibMain {
     sc.setLocalProperty("spark.rdd.compress", "true")
     sc.setLocalProperty("spark.driver.memory", "2g")
     sc.setLocalProperty("spark.eventLog.enabled", "true")
-    sc.setLocalProperty("spark.default.parallelism", "8")
+//    sc.setLocalProperty("spark.default.parallelism", "8")
     
     // Load and parse the data file.
-    val data = MLUtils.loadLibSVMFile(sc, "./RRBF_1M_HD.libsvm")
+    var data:RDD[LabeledPoint] = null
+    new Timers("loadLibSVMFile, ").time{
+    data = MLUtils.loadLibSVMFile(sc, "./RRBF_1M_HD.libsvm")
+    data.count()
+    println("data num of partition, " + data.partitions.size)
+    }
+    
     // Split the data into training and test sets (30% held out for testing)
-    val splits = data.randomSplit(Array(0.7, 0.3))
-    val (trainingData, testData) = (splits(0), splits(1))
+    var splits:Array[RDD[LabeledPoint]] = null
+    new Timers("randomSplit, ").time{
+    splits = data.randomSplit(Array(0.7, 0.3))
+    }
+    
+    var trainingData:RDD[LabeledPoint] = null 
+    var testData:RDD[LabeledPoint] = null
+    new Timers("repartition, ").time{
+    trainingData = splits(0).repartition(16) 
+    testData = splits(1).repartition(16)
+    trainingData.count()
+    testData.count()
+    }
     
     val numClasses = 2
     val categoricalFeaturesInfo = Map[Int, Int]()
@@ -44,15 +63,27 @@ object BatchMLlibMain {
     val maxDepth = 8
     val maxBins = 32
     
-    val model = DecisionTree.trainClassifier(trainingData, numClasses, categoricalFeaturesInfo,
+    var model:DecisionTreeModel = null
+    new Timers("DecisionTree.trainClassifier, ").time{
+    model = DecisionTree.trainClassifier(trainingData, numClasses, categoricalFeaturesInfo,
       impurity, maxDepth, maxBins)
+      model.numNodes
+    }
     
     // Evaluate model on test instances and compute test error
-    val labelAndPreds = testData.map { point =>
+    var labelAndPreds:RDD[(Double, Double)] = null
+    new Timers("testData prediction, ").time{
+    labelAndPreds = testData.map { point =>
       val prediction = model.predict(point.features)
       (point.label, prediction)
+      }
+      labelAndPreds.count()
     }
-    val testErr = labelAndPreds.filter(r => r._1 != r._2).count().toDouble / testData.count()
+    
+    var testErr: Double = 0.0 
+    new Timers("calculate testErr, ").time{
+    testErr = labelAndPreds.filter(r => r._1 != r._2).count().toDouble / testData.count()
+    }
     println("Test Error = " + testErr)
     println("data count = " + data.count())
 //    println("Learned classification tree model:\n" + model.toDebugString)

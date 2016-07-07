@@ -37,7 +37,7 @@ object BatchMain {
     sc.setLocalProperty("spark.rdd.compress", "true")
     sc.setLocalProperty("spark.driver.memory", "2g")
     sc.setLocalProperty("spark.eventLog.enabled", "true")
-    sc.setLocalProperty("spark.default.parallelism", "8")
+    sc.setLocalProperty("spark.default.parallelism", Constant.num_Models.toString())
       
      var trainData = sc.textFile(Constant.dataset_path)
 //     streamingKNORA.onTrain(trainData)
@@ -47,36 +47,51 @@ object BatchMain {
      
      var numOfData = SD.count()
      var RDDIndex = 0
-     val TrainN = 10000
-     val ValidateN = 1000
-     val TestN = 1000
+     val TrainN = 700000
+     val ValidateN = 200000
+     val TestN = 100000-1
      //TODO: Under Streaming, Need to merge unused data into new data
      breakable { while(RDDIndex < numOfData-1){
          if(RDDIndex+TrainN > numOfData-1)
            break;
          var train:RDD[String] = null
-         Timers.time{
-         train = SD.filter( x => x._1 >= RDDIndex).filter(x => x._1 < RDDIndex + TrainN).map(x=>x._2).cache()
+         new Timers("SD.filter to get train Data, ").time{
+         train = SD.filter( x => x._1 >= RDDIndex).filter(x => x._1 < RDDIndex + TrainN).repartition(Constant.num_Models).map(x=>x._2).cache()
+         train.count()
          }
          RDDIndex += TrainN
+         new Timers("onTrain, ").time{
          streamingKNORA.onTrain(train)
+         }
          train.unpersist()
          
          if(RDDIndex+ValidateN > numOfData-1)
            break;
-         var validate = SD.filter(x => x._1 >= RDDIndex).filter(x => x._1 < RDDIndex + ValidateN).map(x=>x._2).cache()
+         var validate:RDD[String] = null
+         new Timers("SD.filter to get validate Data, ").time{
+         validate = SD.filter(x => x._1 >= RDDIndex).filter(x => x._1 < RDDIndex + ValidateN).repartition(Constant.num_Models).map(x=>x._2).cache()
+         validate.count()
+         }
          RDDIndex += ValidateN
+         new Timers("onValidate, ").time{
          streamingKNORA.onValidate(validate)
+         }
+         validate.unpersist()
          
          if(RDDIndex+TestN > numOfData-1)
            break;
          if(RDDIndex > (TrainN+ValidateN)*(1000/ValidateN)){
-           var test = SD.filter(x => x._1 >= RDDIndex).filter(x => x._1 < RDDIndex + TestN).map(x=>x._2).cache()
+           var test:RDD[String] = null
+           new Timers("SD.filter to get test Data, ").time{
+           test = SD.filter(x => x._1 >= RDDIndex).filter(x => x._1 < RDDIndex + TestN).repartition(Constant.num_Models).map(x=>x._2).cache()
+           test.count()
+           }
            RDDIndex += TestN
+           new Timers("onTest, ").time{
            streamingKNORA.onPredict(test)
+           }
            test.unpersist()
          }
-           validate.unpersist()
        }
      }
      SD.unpersist()

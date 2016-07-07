@@ -18,6 +18,7 @@ import org.apache.spark.rdd.RDD.rddToPairRDDFunctions
 import main.scala.Utils.Constant
 import main.scala.MachineLearning
 import main.scala.Utils.Timers
+import com.madhukaraphatak.sizeof.SizeEstimator
 
 class StreamingKNORA extends MachineLearning with Serializable{
   
@@ -115,6 +116,8 @@ class StreamingKNORA extends MachineLearning with Serializable{
       LM.learner.setModelContext(arffStream.getHeader())
       LM.learner.prepareForUse()
       LM.learner_num = i
+//      println(SizeEstimator.estimate(LM))
+//      println(SizeEstimator.estimate("a"))
       models.update(i-1, LM)
     }
     
@@ -139,35 +142,33 @@ class StreamingKNORA extends MachineLearning with Serializable{
       setInitialStreamingLearningModel(instance_header_path)
       isInitial = true
     }
+   
+    println("data partition size: " + data.partitions.size)
     
-//    var key_instance:RDD[(Long, (Long, Instance))] = null
     var serial_instance:RDD[(Long, Instance)] = null
-    Timers.time{
-    //covert sting into instance and add key(learner_number) to each instance
-//    key_instance = data.map(line => convertoinstance(line)).zipWithIndex().map{case (v,k) => ((k%num_Models)+1,v)}
-      serial_instance = data.map(line => convertoinstance(line)).repartition(Constant.num_Models)
+    new Timers("onTrain: convertoinstance and repartition, ").time{
+//      serial_instance = data.map(line => convertoinstance(line)).repartition(Constant.num_Models).cache()
+      serial_instance = data.map(line => convertoinstance(line)).cache()
+//      println("serial_instance partition size: " + serial_instance.partitions.size)
+      serial_instance.count()
     }
-
-    var group_instances:RDD[(Long, Iterable[(Long, Instance)])] = null
-//    Timers.time{
-//    //group instances by key(learner_number)
-//    group_instances = key_instance.groupByKey()
-//    }
     
     var update_Models:RDD[LearningModel] = null
-    Timers.time{
-    //train models on group instances
-//    update_Models = group_instances.map(x => TrainOnInstancesTransform(x._1, x._2, models))
-      update_Models = serial_instance.mapPartitionsWithIndex((index, x) => TrainOnInstancesTransform(index, x, models))
+    new Timers("onTrain: mapPartitionsWithIndex, ").time{
+    //train models on instances on Each partition
+      update_Models = serial_instance.mapPartitionsWithIndex((index, x) => TrainOnInstancesTransform(index, x, models)).cache()
+      println("update_Models partition size: " + update_Models.partitions.size)
+      update_Models.count()
     }
     
-    Timers.time{
+    new Timers("onTrain: update_Models.collect, ").time{
     //update models
     models = update_Models.collect()
-    println(models.length)
     }
     
     System.out.println("Train Learning Model Done!!!")
+    serial_instance.unpersist()
+    update_Models.unpersist()
   }
   
   def TrainOnInstancesTransform(key: Long, inst: Iterator[(Long,Instance)], models : Array[LearningModel]): Iterator[LearningModel] = {
@@ -178,13 +179,16 @@ class StreamingKNORA extends MachineLearning with Serializable{
         index = i
     }
     
-    //sort training dataset
-//    var num_inst = inst.toList.sortBy(_._1)
+    //sort or not sort training dataset
+    //var num_inst = inst.toList.sortBy(_._1)
     var num_inst = inst.toList
     
     //Train on dataset
+    println("num of dataset on each partition, " + num_inst.length)
+    new Timers("Train on dataset, ").time{
     for(i <- 0 until num_inst.length){
       models(index).learner.trainOnInstance(num_inst(i)._2)
+    }
     }
     var ItorModels: Iterator[LearningModel] = Iterator(models(index))
     return ItorModels
@@ -192,14 +196,29 @@ class StreamingKNORA extends MachineLearning with Serializable{
   
   def ValidateOnInstances_KNORA(data: RDD[String]) = {
     //covert sting into instance
-    var insts = data.map(line => convertoinstance(line))
+    var insts:RDD[(Long, Instance)] = null
+    new Timers("onValidate: convertoinstance, ").time{
+    insts = data.map(line => convertoinstance(line)).cache()
+    insts.count()
+    }
     
     //for each instance, validate on every model and record the model which correct predict the instance
-    var validateresult = insts.map(inst => ValidateOnInstances_KNORA_Transformation(inst, models))
+    var validateresult:RDD[ValidateInstance] = null
+    new Timers("onValidate: OnInstances_KNORA_Transformation, ").time{
+    validateresult = insts.map(inst => ValidateOnInstances_KNORA_Transformation(inst, models)).cache()
+    validateresult.count()
+    /*
+     * should boardcast the models????
+     */
+    }
     
-    var VRArray = validateresult.collect()
+    var VRArray:Array[ValidateInstance] = null
+    new Timers("onValidate: validateresult.collect, ").time{
+    VRArray = validateresult.collect()
+    }
     
     //Assign validate data into ValidateList
+    new Timers("onValidate: update ValidateList, ").time{
     for(i <- 0 until VRArray.length){
       ValidateList.update(validateList_index, VRArray.apply(i))
       validateList_index+=1
@@ -207,7 +226,10 @@ class StreamingKNORA extends MachineLearning with Serializable{
         validateList_index = 0
       }
     }
+    }
     System.out.println("Validate Learning Model Done!!!")
+    insts.unpersist()
+    validateresult.unpersist()
   }
   
   def ValidateOnInstances_KNORA_Transformation(inst: (Long,Instance), models: Array[LearningModel]): ValidateInstance = {
@@ -222,15 +244,24 @@ class StreamingKNORA extends MachineLearning with Serializable{
   
   def PredictOnInstances_MV(data: RDD[String]) = {
     //covert sting into instance
-    var insts = data.map(line => convertoinstance(line))
+    var insts:RDD[(Long, Instance)] = null
+    new Timers("onPredict_MV: convertoinstance, ").time{
+    insts = data.map(line => convertoinstance(line))
+    }
     var num_insts = insts.count()
     
     //for each instance, predict on every model and do majority vote
+    var result:RDD[Vector] = null
+    new Timers("onPredict_MV: OnInstances_MV_Transformation, ").time{
     var result = insts.map(inst => PredictOnInstances_MV_Transformation(inst, models))
+    }
     
     //MLlib statistic function
+    var mean:Vector = null
+    new Timers("onPredict_MV: Statistics.colStats, ").time{
     val summary: MultivariateStatisticalSummary = Statistics.colStats(result)
-    val mean = summary.mean
+    mean = summary.mean
+    }
     
     //Calculate Accuracy
     this.num_testInstance += num_insts.toInt
@@ -263,21 +294,35 @@ class StreamingKNORA extends MachineLearning with Serializable{
   
   def PredictOnInstances_KNORA(data: RDD[String]) = {
     //covert sting into instance
-    var insts = data.map(line => convertoinstance(line))
+    var insts:RDD[(Long, Instance)] = null
+    new Timers("onPredict_KNORA: convertoinstance, ").time{
+    insts = data.map(line => convertoinstance(line)).cache()
+    insts.count()
+    }
+    
     var num_insts = insts.count()
     
     //for each instance, predict on every model and do KNORA & majority vote
-    var result = insts.map(inst => PredictOnInstances_KNORA_Transformation(inst, models))
+    var result:RDD[Vector] = null
+    new Timers("onPredict_KNORA: OnInstances_KNORA_Transformation, ").time{
+    result = insts.map(inst => PredictOnInstances_KNORA_Transformation(inst, models)).cache()
+    result.count()
+    }
     
     //MLlib statistic function
+    var mean:Vector = null
+    new Timers("onPredict_KNORA: Statistics.colStats, ").time{
     val summary: MultivariateStatisticalSummary = Statistics.colStats(result)
-    val mean = summary.mean
+    mean = summary.mean
+    }
     
     //Calculate Accuracy
     this.num_testInstance += num_insts.toInt
     this.num_testCorrectInst += (mean.apply(0)*num_insts).toInt
     println(num_testCorrectInst.toDouble / num_testInstance.toDouble)    
     System.out.println("Predict KNORA Learning Model Done!!!")
+    insts.unpersist()
+    result.unpersist()
     
   }
     

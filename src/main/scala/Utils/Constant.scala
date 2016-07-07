@@ -3,7 +3,7 @@ package main.scala.Utils
 object Constant {
   
   //KNORA variables
-  var num_Models: Int = 10
+  var num_Models: Int = 128
   var num_validate: Int = 1000
   var ModelType: String = StreamingModel.HoeffdingTree
   var num_neighbour: Int = 8
