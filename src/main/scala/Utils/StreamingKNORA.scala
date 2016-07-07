@@ -38,16 +38,7 @@ class StreamingKNORA extends MachineLearning with Serializable{
   var instance_header_path = "./File/RRBF_1M_H.arff"
   var num_testInstance: Int = 0
   var num_testCorrectInst: Int = 0
-  
     
-  def convertoinstance(line: String): (Long,Instance) = {
-    var common = line.indexOf(',')
-    var serialNum = line.substring(0, common).toLong
-    var instString = line.substring(line.indexOf(",")+1)
-	  var inst = instanceMaker.convertToInstance(instString, instances)
-	  return (serialNum,inst)
-  }
-  
   def setNumModel(num_Models: Int) = {
     this.num_Models = num_Models
   }
@@ -95,6 +86,14 @@ class StreamingKNORA extends MachineLearning with Serializable{
   
   def onPredict(data: DStream[String]) = {
     
+  }
+  
+  def convertoinstance(line: String): (Long,Instance) = {
+    var common = line.indexOf(',')
+    var serialNum = line.substring(0, common).toLong
+    var instString = line.substring(line.indexOf(",")+1)
+	  var inst = instanceMaker.convertToInstance(instString, instances)
+	  return (serialNum,inst)
   }
   
   def setInitialStreamingLearningModel( instance_header_path: String) = {
@@ -147,16 +146,15 @@ class StreamingKNORA extends MachineLearning with Serializable{
     
     var serial_instance:RDD[(Long, Instance)] = null
     new Timers("onTrain: convertoinstance and repartition, ").time{
-//      serial_instance = data.map(line => convertoinstance(line)).repartition(Constant.num_Models).cache()
       serial_instance = data.map(line => convertoinstance(line)).cache()
-//      println("serial_instance partition size: " + serial_instance.partitions.size)
       serial_instance.count()
     }
     
     var update_Models:RDD[LearningModel] = null
     new Timers("onTrain: mapPartitionsWithIndex, ").time{
     //train models on instances on Each partition
-      update_Models = serial_instance.mapPartitionsWithIndex((index, x) => TrainOnInstancesTransform(index, x, models)).cache()
+//      update_Models = serial_instance.mapPartitionsWithIndex((index, x) => TrainOnInstancesTransform(index, x, models)).cache()
+      update_Models = data.mapPartitionsWithIndex((index, x) => TrainOnInstancesTransform(index, x, models)).cache()
       println("update_Models partition size: " + update_Models.partitions.size)
       update_Models.count()
     }
@@ -171,7 +169,7 @@ class StreamingKNORA extends MachineLearning with Serializable{
     update_Models.unpersist()
   }
   
-  def TrainOnInstancesTransform(key: Long, inst: Iterator[(Long,Instance)], models : Array[LearningModel]): Iterator[LearningModel] = {
+  def TrainOnInstancesTransform(key: Long, line: Iterator[String], models : Array[LearningModel]): Iterator[LearningModel] = {
     //find corresponding learning model
     var index = 0;
     for(i <- 0 until models.length){
@@ -179,17 +177,28 @@ class StreamingKNORA extends MachineLearning with Serializable{
         index = i
     }
     
+    while(line.hasNext){
+      var strLine = line.next()
+//      println(strLine)
+      var common = strLine.indexOf(',')
+      var serialNum = strLine.substring(0, common).toLong
+      var instString = strLine.substring(common+1)
+//      println(instString)
+  	  var inst = instanceMaker.convertToInstance(instString, instances)
+  	  models(index).learner.trainOnInstance(inst)
+    }
+    
     //sort or not sort training dataset
     //var num_inst = inst.toList.sortBy(_._1)
-    var num_inst = inst.toList
+//    var num_inst = line.toList
     
     //Train on dataset
-    println("num of dataset on each partition, " + num_inst.length)
-    new Timers("Train on dataset, ").time{
-    for(i <- 0 until num_inst.length){
-      models(index).learner.trainOnInstance(num_inst(i)._2)
-    }
-    }
+//    println("num of dataset on each partition, " + num_inst.length)
+//    new Timers("Train on dataset, ").time{
+//    for(i <- 0 until num_inst.length){
+//      models(index).learner.trainOnInstance(num_inst(i)._2)
+//    }
+//    }
     var ItorModels: Iterator[LearningModel] = Iterator(models(index))
     return ItorModels
   }
