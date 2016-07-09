@@ -352,38 +352,38 @@ class StreamingKNORA extends MachineLearning with Serializable{
     
     //Get predict class (getVotesForInstance)	
     var num_model = StreamingKNORA.broadcastModels.value.length
-    var PredictResultArray = new Array[PredictResult](num_model)
-//    new Timers("PredictResultArray, ").time{
-    for(i <- 0 until num_model){
-      var ML = StreamingKNORA.broadcastModels.value.apply(i)
-      var result = ML.learner.getVotesForInstance(inst)
-      var predict_result = new PredictResult(ML.learner_num, result);
-      PredictResultArray.update(i, predict_result)
-    }
-//    }
-    
+        
     //Find KNN instances' classifiers which correctly predict the instance(inst._2)
     var Intesect_classifier_number:Array[Integer]=null
 //    new Timers("KNN, ").time{
     Intesect_classifier_number =knora.findKNNValidateInstances(StreamingKNORA.broadcastValidateList.value, inst, instances);
 //    }
     
-    //Find Predict_Result which: learner number = intesect_classifier_number
+    //Predict on Intersect/Union Models
     var num_interset = Intesect_classifier_number.length
     var interset_PredictResult_Array = new Array[PredictResult](num_interset)
-//    new Timers("find interset, ").time{
-    var num_PredicResult = PredictResultArray.length
-    for(i <- 0 until num_interset){
-      for(j <- 0 until num_PredicResult){
-				 if(PredictResultArray.apply(j).learner_num ==  Intesect_classifier_number.apply(i)){
-					 interset_PredictResult_Array.update(i, PredictResultArray.apply(j))
-			   }
+//    new Timers("PredictResultArray, ").time{
+    for(i <- 0 until num_model){
+      for(j <- 0 until num_interset){
+        var ML = StreamingKNORA.broadcastModels.value.apply(i)
+        if(ML.learner_num == Intesect_classifier_number.apply(j)){
+          var result = ML.learner.getVotesForInstance(inst)
+          var predict_result = new PredictResult(ML.learner_num, result);
+          interset_PredictResult_Array.update(j, predict_result)
+        }
       }
     }
 //    }
-    
+        
     //If no intesect, use all classifier (MV)
     if(num_interset == 0){
+      var PredictResultArray = new Array[PredictResult](num_model)
+      for(i <- 0 until num_model){
+        var ML = StreamingKNORA.broadcastModels.value.apply(i)
+        var result = ML.learner.getVotesForInstance(inst)
+        var predict_result = new PredictResult(ML.learner_num, result);
+        PredictResultArray.update(i, predict_result)
+      }
       interset_PredictResult_Array = PredictResultArray
     }
     

@@ -18,13 +18,43 @@ import org.apache.spark.rdd.RDD
 object BatchMain {
    def main(args: Array[String]): Unit = {
 
+   if (args.length < 11) {
+     System.err.println(s"""
+      |Usage:  
+    var Dataset_HDFS:String = args.apply(0)
+    var Dataset_header:String = args.apply(1) 
+    var num_Models: Int = args.apply(2).toInt
+    var ModelType:String = args.apply(3)
+    var num_validate:Int = args.apply(4).toInt
+    var num_neighbour:Int = args.apply(5).toInt
+    var isIntersect:Boolean = args.apply(6).toBoolean
+    var num_train_batch:Int = args.apply(7).toInt
+    var num_validate_batch:Int = args.apply(8).toInt
+    var num_test_batch:Int = args.apply(9).toInt
+    var num_val_test_repartition:Int = args.apply(10).toInt
+      """.stripMargin)
+      System.exit(1)
+    }
+     
+    var Dataset_HDFS:String = args.apply(0).split(":").apply(1)
+    var Dataset_header:String = args.apply(1).split(":").apply(1) 
+    var num_Models: Int = args.apply(2).split(":").apply(1).toInt
+    var ModelType:String = args.apply(3).split(":").apply(1)
+    var num_validate:Int = args.apply(4).split(":").apply(1).toInt
+    var num_neighbour:Int = args.apply(5).split(":").apply(1).toInt
+    var isIntersect:Boolean = args.apply(6).split(":").apply(1).toBoolean
+    var num_train_batch:Int = args.apply(7).split(":").apply(1).toInt
+    var num_validate_batch:Int = args.apply(8).split(":").apply(1).toInt
+    var num_test_batch:Int = args.apply(9).split(":").apply(1).toInt
+    var num_val_test_repartition:Int = args.apply(10).split(":").apply(1).toInt
+    
     //Set Streaming KNORA variables
     var streamingKNORA = new StreamingKNORA()
-    streamingKNORA.setNumModel(Constant.num_Models)
-    streamingKNORA.setModelType(StreamingModel.HoeffdingTree)
-    streamingKNORA.setNumValidate(Constant.num_validate)
-    streamingKNORA.setNumNeighbour(Constant.num_neighbour);
-    streamingKNORA.setIfIntersect(Constant.intersect);
+    streamingKNORA.setNumModel(num_Models)
+    streamingKNORA.setModelType(ModelType)
+    streamingKNORA.setNumValidate(num_validate)
+    streamingKNORA.setNumNeighbour(num_neighbour)
+    streamingKNORA.setIfIntersect(isIntersect)
     
     //Set Spark context variable
     val sc = new SparkContext(new SparkConf().setAppName("Spark KNORA"))
@@ -48,9 +78,9 @@ object BatchMain {
      
      var numOfData = SD.count()
      var RDDIndex = 0
-     val TrainN = 700000
-     val ValidateN = 100000
-     val TestN = 100000
+     val TrainN = num_train_batch
+     val ValidateN = num_validate_batch
+     val TestN = num_test_batch
      //TODO: Under Streaming, Need to merge unused data into new data
      breakable { while(RDDIndex < numOfData){
          if(RDDIndex+TrainN > numOfData-1)
