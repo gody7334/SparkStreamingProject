@@ -41,6 +41,7 @@ class StreamingKNORA extends MachineLearning with Serializable{
   var instance_header_path = "./File/RRBF_1M_H.arff"
   var num_testInstance: Int = 0
   var num_testCorrectInst: Int = 0
+  var accuracy:Double = 0.0
   
   def setNumModel(num_Models: Int) = {
     this.num_Models = num_Models
@@ -83,8 +84,8 @@ class StreamingKNORA extends MachineLearning with Serializable{
   } 
   
   def onPredict(data: RDD[String]) = {
-    PredictOnInstances_MV(data)
-//    PredictOnInstances_KNORA(data)
+//    PredictOnInstances_MV(data)
+    PredictOnInstances_KNORA(data)
   }
   
   def onPredict(data: DStream[String]) = {
@@ -124,10 +125,11 @@ class StreamingKNORA extends MachineLearning with Serializable{
       models.update(i-1, LM)
     }
     
-    StreamingKNORA.broadcastModels = StreamingKNORA.sc.broadcast(models)
-    StreamingKNORA.broadcastValidateList = StreamingKNORA.sc.broadcast(ValidateList)
+//    StreamingKNORA.broadcastModels = StreamingKNORA.sc.broadcast(models)
+//    StreamingKNORA.broadcastValidateList = StreamingKNORA.sc.broadcast(ValidateList)
     
     println("Number of models: " +models.length)
+//    println("broadcast of Models: " + StreamingKNORA.broadcastModels.value.length)
     System.out.println("Number of classes: " + instances.numClasses())
     System.out.println("Inintial Learning Model Done!!!")
   }
@@ -148,36 +150,37 @@ class StreamingKNORA extends MachineLearning with Serializable{
       setInitialStreamingLearningModel(instance_header_path)
       isInitial = true
     }
-   
-    println("data partition size: " + data.partitions.size)
+    println("data partition size, " + data.partitions.size)
         
+    var broadcastModels = StreamingKNORA.sc.broadcast(models)
+    
     var update_Models:RDD[LearningModel] = null
-    new Timers("onTrain: mapPartitionsWithIndex, ").time{
+    new Timers("onTrain, mapPartitionsWithIndex, ").time{
     //train models on instances on Each partition
-      update_Models = data.mapPartitionsWithIndex((index, x) => TrainOnInstancesTransform(index, x)).cache()
+      update_Models = data.mapPartitionsWithIndex((index, x) => TrainOnInstancesTransform(index, x, broadcastModels)).cache()
       println("update_Models partition size: " + update_Models.partitions.size)
+      
       update_Models.count()
     }
     
-    new Timers("onTrain: update_Models.collect, ").time{
+    new Timers("onTrain, update_Models.collect, ").time{
     //update models
     models = update_Models.collect()
     }
     
-    StreamingKNORA.broadcastModels.destroy()
-    StreamingKNORA.broadcastModels = StreamingKNORA.sc.broadcast(models)
+    broadcastModels.destroy()
     
     System.out.println("Train Learning Model Done!!!")
     update_Models.unpersist()
   }
   
-  def TrainOnInstancesTransform(key: Long, line: Iterator[String]): Iterator[LearningModel] = {
+  def TrainOnInstancesTransform(key: Long, line: Iterator[String], broadcastModels:Broadcast[Array[LearningModel]]): Iterator[LearningModel] = {
     //find corresponding learning model
     var ML:LearningModel = null
-    var num_models = StreamingKNORA.broadcastModels.value.length
+    var num_models = broadcastModels.value.length
     for(i <- 0 until num_models){
        //!! learner_number=1:n, key=0:n-1
-      var MLtemp =StreamingKNORA.broadcastModels.value.apply(i) 
+      var MLtemp =broadcastModels.value.apply(i) 
       if(MLtemp.learner_num-1 == key)
         ML = MLtemp
     }
@@ -199,10 +202,12 @@ class StreamingKNORA extends MachineLearning with Serializable{
   
   def ValidateOnInstances_KNORA(data: RDD[String]) = {
     
+    var broadcastModels = StreamingKNORA.sc.broadcast(models)
+    
     //for each instance, validate on every model and record the model which correct predict the instance
     var validateresult:RDD[ValidateInstance] = null
     new Timers("onValidate: OnInstances_KNORA_Transformation, ").time{
-    validateresult = data.map(line => ValidateOnInstances_KNORA_Transformation(line)).cache()
+    validateresult = data.map(line => ValidateOnInstances_KNORA_Transformation(line, broadcastModels)).cache()
     validateresult.count()
     }
     
@@ -222,14 +227,14 @@ class StreamingKNORA extends MachineLearning with Serializable{
     }
     }
     
-    StreamingKNORA.broadcastValidateList.destroy()
-    StreamingKNORA.broadcastValidateList = StreamingKNORA.sc.broadcast(ValidateList)
+//    StreamingKNORA.broadcastValidateList.destroy()
+//    StreamingKNORA.broadcastValidateList = StreamingKNORA.sc.broadcast(ValidateList)
     
     System.out.println("Validate Learning Model Done!!!")
     validateresult.unpersist()
   }
   
-  def ValidateOnInstances_KNORA_Transformation(line:String): ValidateInstance = {
+  def ValidateOnInstances_KNORA_Transformation(line:String, broadcastModels:Broadcast[Array[LearningModel]]): ValidateInstance = {
   
     var common = line.indexOf(',')
     var serialNum = line.substring(0, common).toLong
@@ -238,9 +243,9 @@ class StreamingKNORA extends MachineLearning with Serializable{
     
     var v = new ValidateInstance();
     v.Validate_Inst = inst;
-    var num_model = StreamingKNORA.broadcastModels.value.length
+    var num_model = broadcastModels.value.length
     for(i <- 0 until num_model){
-      var model = StreamingKNORA.broadcastModels.value.apply(i)
+      var model = broadcastModels.value.apply(i)
 		  if(model.learner.correctlyClassifies(inst))
 				   v.list_positive_learner_num.add(model.learner_num);
 		}
@@ -255,12 +260,13 @@ class StreamingKNORA extends MachineLearning with Serializable{
 //    insts.count()
 //    }
     
+    var broadcastModels = StreamingKNORA.sc.broadcast(models)
     var num_insts = data.count()
     
     //for each instance, predict on every model and do majority vote
     var result:RDD[Vector] = null
     new Timers("onPredict_MV: OnInstances_MV_Transformation, ").time{
-    result = data.map(line => PredictOnInstances_MV_Transformation(line))
+    result = data.map(line => PredictOnInstances_MV_Transformation(line, broadcastModels))
     result.count()
     }
     println("num of result: "+result.count())
@@ -275,10 +281,12 @@ class StreamingKNORA extends MachineLearning with Serializable{
     //Calculate Accuracy
     this.num_testInstance += num_insts.toInt
     this.num_testCorrectInst += (mean.apply(0)*num_insts).toInt
-    println(num_testCorrectInst.toDouble / num_testInstance.toDouble)    
+    this.accuracy = num_testCorrectInst.toDouble / num_testInstance.toDouble 
+    println(this.accuracy)  
     System.out.println("Predict MV Learning Model Done!!!")
+    broadcastModels.destroy()
   }
-  def PredictOnInstances_MV_Transformation(line:String): Vector = {
+  def PredictOnInstances_MV_Transformation(line:String, broadcastModels:Broadcast[Array[LearningModel]]): Vector = {
     
 //    //Get predict class (getVotesForInstance)
 //    var PredictResultArray = new Array[PredictResult](models.length)
@@ -294,10 +302,10 @@ class StreamingKNORA extends MachineLearning with Serializable{
 //	  println(instString)
     
     //Get predict class (getVotesForInstance)
-    var num_model = StreamingKNORA.broadcastModels.value.length
+    var num_model = broadcastModels.value.length
     var PredictResultArray = new Array[PredictResult](num_model)
     for(i <- 0 until num_model){
-      var ML = StreamingKNORA.broadcastModels.value.apply(i)
+      var ML = broadcastModels.value.apply(i)
       var result = ML.learner.getVotesForInstance(inst)
       var predict_result = new PredictResult(ML.learner_num, result);
       PredictResultArray.update(i, predict_result)
@@ -319,11 +327,13 @@ class StreamingKNORA extends MachineLearning with Serializable{
   def PredictOnInstances_KNORA(data: RDD[String]) = {
     
     var num_insts = data.count()
+    var broadcastModels = StreamingKNORA.sc.broadcast(models)
+    var broadcastValidate = StreamingKNORA.sc.broadcast(ValidateList)
     
     //for each instance, predict on every model and do KNORA & majority vote
     var result:RDD[Vector] = null
     new Timers("onPredict_KNORA: OnInstances_KNORA_Transformation, ").time{
-    result = data.map(line => PredictOnInstances_KNORA_Transformation(line)).cache()
+    result = data.map(line => PredictOnInstances_KNORA_Transformation(line, broadcastModels, broadcastValidate)).cache()
     result.count()
     }
        
@@ -337,13 +347,16 @@ class StreamingKNORA extends MachineLearning with Serializable{
     //Calculate Accuracy
     this.num_testInstance += num_insts.toInt
     this.num_testCorrectInst += (mean.apply(0)*num_insts).toInt
-    println(num_testCorrectInst.toDouble / num_testInstance.toDouble)    
+    this.accuracy = num_testCorrectInst.toDouble / num_testInstance.toDouble 
+    println(this.accuracy)
     System.out.println("Predict KNORA Learning Model Done!!!")
 //    insts.unpersist()
     result.unpersist()
+    broadcastModels.destroy()
+    broadcastValidate.destroy()
   }
     
-  def PredictOnInstances_KNORA_Transformation(line:String): Vector = {
+  def PredictOnInstances_KNORA_Transformation(line:String, broadcastModels:Broadcast[Array[LearningModel]], broadcastValidate:Broadcast[Array[ValidateInstance]]): Vector = {
     
     var common = line.indexOf(',')
     var serialNum = line.substring(0, common).toLong
@@ -351,12 +364,12 @@ class StreamingKNORA extends MachineLearning with Serializable{
 	  var inst = instanceMaker.convertToInstance(instString, instances)
     
     //Get predict class (getVotesForInstance)	
-    var num_model = StreamingKNORA.broadcastModels.value.length
+    var num_model = broadcastModels.value.length
         
     //Find KNN instances' classifiers which correctly predict the instance(inst._2)
     var Intesect_classifier_number:Array[Integer]=null
 //    new Timers("KNN, ").time{
-    Intesect_classifier_number =knora.findKNNValidateInstances(StreamingKNORA.broadcastValidateList.value, inst, instances);
+    Intesect_classifier_number =knora.findKNNValidateInstances(broadcastValidate.value, inst, instances);
 //    }
     
     //Predict on Intersect/Union Models
@@ -365,7 +378,7 @@ class StreamingKNORA extends MachineLearning with Serializable{
 //    new Timers("PredictResultArray, ").time{
     for(i <- 0 until num_model){
       for(j <- 0 until num_interset){
-        var ML = StreamingKNORA.broadcastModels.value.apply(i)
+        var ML = broadcastModels.value.apply(i)
         if(ML.learner_num == Intesect_classifier_number.apply(j)){
           var result = ML.learner.getVotesForInstance(inst)
           var predict_result = new PredictResult(ML.learner_num, result);
@@ -379,7 +392,7 @@ class StreamingKNORA extends MachineLearning with Serializable{
     if(num_interset == 0){
       var PredictResultArray = new Array[PredictResult](num_model)
       for(i <- 0 until num_model){
-        var ML = StreamingKNORA.broadcastModels.value.apply(i)
+        var ML = broadcastModels.value.apply(i)
         var result = ML.learner.getVotesForInstance(inst)
         var predict_result = new PredictResult(ML.learner_num, result);
         PredictResultArray.update(i, predict_result)
@@ -404,8 +417,8 @@ class StreamingKNORA extends MachineLearning with Serializable{
 
 object StreamingKNORA {
   var sc: SparkContext = _
-  var broadcastModels: Broadcast[Array[LearningModel]] = _
-  var broadcastValidateList: Broadcast[Array[ValidateInstance]] = _
+//  var broadcastModels: Broadcast[Array[LearningModel]] = _
+//  var broadcastValidateList: Broadcast[Array[ValidateInstance]] = _
   
   def setSparkContext(sc: SparkContext) = {
     this.sc = sc

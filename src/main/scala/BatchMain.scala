@@ -14,11 +14,13 @@ import main.scala.Utils.StreamingKNORA
 import main.scala.Utils.StreamingModel
 import main.scala.Utils.Constant
 import org.apache.spark.rdd.RDD
+import org.apache.log4j.{Level, LogManager, PropertyConfigurator}
+
 
 object BatchMain {
    def main(args: Array[String]): Unit = {
 
-   if (args.length < 11) {
+   if (args.length < 12) {
      System.err.println(s"""
       |Usage:  
     var Dataset_HDFS:String = args.apply(0)
@@ -46,7 +48,22 @@ object BatchMain {
     var num_train_batch:Int = args.apply(7).split(":").apply(1).toInt
     var num_validate_batch:Int = args.apply(8).split(":").apply(1).toInt
     var num_test_batch:Int = args.apply(9).split(":").apply(1).toInt
-    var num_val_test_repartition:Int = args.apply(10).split(":").apply(1).toInt
+    var num_warmup_perModel:Int = args.apply(10).split(":").apply(1).toInt
+    var num_val_test_repartition:Int = args.apply(11).split(":").apply(1).toInt
+    
+    var logger = LogManager.getLogger("myLogger")
+    logger.info("Dataset_HDFS: "+Dataset_HDFS)
+    logger.info("Dataset_header: "+Dataset_header)
+    logger.info("num_Models: "+num_Models)
+    logger.info("ModelType: "+ModelType)
+    logger.info("num_validate: "+num_validate)
+    logger.info("num_neighbour: "+num_neighbour)
+    logger.info("isIntersect: "+isIntersect)
+    logger.info("num_train_batch: "+num_train_batch)
+    logger.info("num_validate_batch: "+num_validate_batch)
+    logger.info("num_test_batch: "+num_test_batch)
+    logger.info("num_warmup_perModel: "+num_warmup_perModel)
+    logger.info("num_val_test_repartition: "+num_val_test_repartition)
     
     //Set Streaming KNORA variables
     var streamingKNORA = new StreamingKNORA()
@@ -87,7 +104,7 @@ object BatchMain {
            break;
          var train:RDD[String] = null
          new Timers("SD.filter to get train Data, ").time{
-         train = SD.filter( x => x._1 >= RDDIndex).filter(x => x._1 < RDDIndex + TrainN).repartition(Constant.num_Models).map(x=>x._2).cache()
+         train = SD.filter( x => x._1 >= RDDIndex).filter(x => x._1 < RDDIndex + TrainN).repartition(num_Models).map(x=>x._2).cache()
          train.count()
          }
          RDDIndex += TrainN
@@ -100,7 +117,7 @@ object BatchMain {
            break;
          var validate:RDD[String] = null
          new Timers("SD.filter to get validate Data, ").time{
-         validate = SD.filter(x => x._1 >= RDDIndex).filter(x => x._1 < RDDIndex + ValidateN).repartition(Constant.num_Models).map(x=>x._2).cache()
+         validate = SD.filter(x => x._1 >= RDDIndex).filter(x => x._1 < RDDIndex + ValidateN).repartition(num_val_test_repartition).map(x=>x._2).cache()
          validate.count()
          }
          RDDIndex += ValidateN
@@ -111,10 +128,10 @@ object BatchMain {
          
          if(RDDIndex+TestN > numOfData-1)
            break;
-         if(RDDIndex > (TrainN+ValidateN)*(1000/ValidateN)){
+         if(RDDIndex > num_warmup_perModel*num_Models){
            var test:RDD[String] = null
            new Timers("SD.filter to get test Data, ").time{
-           test = SD.filter(x => x._1 >= RDDIndex).filter(x => x._1 < RDDIndex + TestN).repartition(Constant.num_Models).map(x=>x._2).cache()
+           test = SD.filter(x => x._1 >= RDDIndex).filter(x => x._1 < RDDIndex + TestN).repartition(num_val_test_repartition).map(x=>x._2).cache()
            test.count()
            }
            RDDIndex += TestN
@@ -126,7 +143,9 @@ object BatchMain {
        }
      }
      SD.unpersist()
-     Thread.sleep(86400000);
+     logger.info("accuracy: "+streamingKNORA.accuracy)
+     logger.info("")
+//     Thread.sleep(86400000);
           
    }
       

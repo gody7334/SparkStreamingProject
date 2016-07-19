@@ -24,6 +24,7 @@ object StreamingMain {
     streamingKNORA.setNumValidate(Constant.num_validate)
     streamingKNORA.setNumNeighbour(Constant.num_neighbour);
     streamingKNORA.setIfIntersect(Constant.intersect);
+
     
     //Set Spark context variable
 //    val sc = new SparkContext(new SparkConf().setAppName("Spark KNORA"))
@@ -53,7 +54,7 @@ object StreamingMain {
 
     // Create context with 2 second batch interval
     val sparkConf = new SparkConf().setAppName("DirectKafkaWordCount")
-    val ssc = new StreamingContext(sparkConf, Seconds(10))
+    val ssc = new StreamingContext(sparkConf, Seconds(1))
     val topicsSet = topics.split(",").toSet
     var kafkaParams = Map[String, String]("metadata.broker.list" -> brokers)
     kafkaParams += ("auto.offset.reset" -> "smallest")
@@ -61,7 +62,7 @@ object StreamingMain {
       ssc, kafkaParams, topicsSet)
     val lines = messages.map(_._2)
     
-
+    lines.count().print()
     
     streamingKNORA.onTrain(lines)
     
